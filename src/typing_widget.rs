@@ -69,95 +69,50 @@ impl TypingWidget {
     }
 }
 
+impl TypingWidget {
+    fn split_text_into_lines(&self, text: &str, max_width: usize) -> Vec<(usize, usize)> {
+        let mut lines = Vec::new();
+        let chars: Vec<char> = text.chars().collect();
+        let mut start = 0;
+        
+        while start < chars.len() {
+            let mut end = start + max_width.min(chars.len() - start);
+            
+            if end < chars.len() {
+                let mut last_space = end;
+                for i in (start..end).rev() {
+                    if chars[i].is_whitespace() {
+                        last_space = i + 1;
+                        break;
+                    }
+                }
+                if last_space > start {
+                    end = last_space;
+                }
+            }
+            
+            lines.push((start, end));
+            start = end;
+        }
+        
+        lines
+    }
+    
+    fn get_current_line_index(&self, line_ranges: &[(usize, usize)], input_len: usize) -> usize {
+        for (idx, &(start, end)) in line_ranges.iter().enumerate() {
+            if input_len >= start && input_len <= end {
+                if input_len == end && idx + 1 < line_ranges.len() {
+                    return idx + 1;
+                }
+                return idx;
+            }
+        }
+        line_ranges.len().saturating_sub(1)
+    }
+}
+
 impl Widget for &TypingWidget {
     fn render(self, area: Rect, buf: &mut ratatui::prelude::Buffer) {
-        let mut lines = Vec::new();
-
-        let target_chars: Vec<char> = self.target_text.chars().collect();
-        let input_chars: Vec<char> = self.input_text.chars().collect();
-
-
-        let max_len = target_chars.len().max(input_chars.len());
-        
-        let input_spans: Vec<Span> = (0..max_len)
-            .map(|i| {
-                if i < input_chars.len() {
-                    let ch = input_chars[i];
-                    if i < target_chars.len() && ch == target_chars[i] {
-                        Span::styled(
-                            ch.to_string(),
-                            Style::default().fg(Color::Green),
-                        )
-                    } else if i < target_chars.len() {
-                        Span::styled(
-                            ch.to_string(),
-                            Style::default()
-                                .fg(Color::Red)
-                                .add_modifier(Modifier::UNDERLINED),
-                        )
-                    } else {
-                        Span::styled(
-                            ch.to_string(),
-                            Style::default()
-                                .fg(Color::Red)
-                                .add_modifier(Modifier::UNDERLINED),
-                        )
-                    }
-                } else {
-                    Span::raw(" ")
-                }
-            })
-            .collect();
-        
-        let target_spans: Vec<Span> = (0..max_len)
-            .map(|i| {
-                if i < target_chars.len() {
-                    let target_char = target_chars[i];
-                    if i < input_chars.len() {
-                        let input_char = input_chars[i];
-                        if input_char == target_char {
-                            Span::styled(
-                                target_char.to_string(),
-                                Style::default().fg(Color::Green),
-                            )
-                        } else {
-                            Span::styled(
-                                target_char.to_string(),
-                                Style::default()
-                                    .fg(Color::Red)
-                                    .add_modifier(Modifier::CROSSED_OUT),
-                            )
-                        }
-                    } else if i == input_chars.len() {
-                        Span::styled(
-                            target_char.to_string(),
-                            Style::default()
-                                .fg(Color::Yellow)
-                                .add_modifier(Modifier::UNDERLINED),
-                        )
-                    } else {
-                        Span::styled(
-                            target_char.to_string(),
-                            Style::default().fg(Color::White),
-                        )
-                    }
-                } else {
-                    Span::raw(" ")
-                }
-            })
-            .collect();
-        
-        let target_line = Line::from(target_spans);
-        lines.push(Line::from(vec![Span::raw("")]));
-        lines.push(Line::from(vec![Span::raw("")]));
-        lines.push(target_line);
-        lines.push(Line::from(vec![Span::raw("")]));
-        
-        let input_line = Line::from(input_spans);
-        lines.push(input_line);
-        lines.push(Line::from(vec![Span::raw("")]));
-        lines.push(Line::from(vec![Span::raw("")]));
-
         let block = Block::bordered().title("Typing Test");
         let inner_area = block.inner(area);
         block.render(area, buf);
@@ -180,24 +135,137 @@ impl Widget for &TypingWidget {
             ])
             .split(vertical[1]);
 
+        let text_area = horizontal[1];
+        let available_width = text_area.width.saturating_sub(2) as usize;
+        
+        if available_width == 0 {
+            return;
+        }
+
+        let line_ranges = self.split_text_into_lines(&self.target_text, available_width);
+        
+        if line_ranges.is_empty() {
+            return;
+        }
+
+        let input_len = self.input_text.chars().count();
+        let current_line_idx = self.get_current_line_index(&line_ranges, input_len);
+        let current_line_range = line_ranges[current_line_idx];
+        
+        let target_chars: Vec<char> = self.target_text.chars().collect();
+        let input_chars: Vec<char> = self.input_text.chars().collect();
+        
+        let line_start = current_line_range.0;
+        let line_end = current_line_range.1;
+        let line_length = line_end - line_start;
+        
+        let input_in_line = if input_len > line_start {
+            input_len.min(line_end) - line_start
+        } else {
+            0
+        };
+        
+        let mut lines = Vec::new();
+        lines.push(Line::from(vec![Span::raw("")]));
+        lines.push(Line::from(vec![Span::raw("")]));
+        
+        let target_spans: Vec<Span> = (0..line_length)
+            .map(|i| {
+                let global_idx = line_start + i;
+                if global_idx < target_chars.len() {
+                    let target_char = target_chars[global_idx];
+                    if global_idx < input_chars.len() {
+                        let input_char = input_chars[global_idx];
+                        if input_char == target_char {
+                            Span::styled(
+                                target_char.to_string(),
+                                Style::default().fg(Color::Green),
+                            )
+                        } else {
+                            Span::styled(
+                                target_char.to_string(),
+                                Style::default()
+                                    .fg(Color::Red)
+                                    .add_modifier(Modifier::CROSSED_OUT),
+                            )
+                        }
+                    } else if global_idx == input_chars.len() {
+                        Span::styled(
+                            target_char.to_string(),
+                            Style::default()
+                                .fg(Color::Yellow)
+                                .add_modifier(Modifier::UNDERLINED),
+                        )
+                    } else {
+                        Span::styled(
+                            target_char.to_string(),
+                            Style::default().fg(Color::White),
+                        )
+                    }
+                } else {
+                    Span::raw(" ")
+                }
+            })
+            .collect();
+        
+        let input_spans: Vec<Span> = (0..line_length)
+            .map(|i| {
+                let global_idx = line_start + i;
+                if i < input_in_line && global_idx < input_chars.len() {
+                    let ch = input_chars[global_idx];
+                    if global_idx < target_chars.len() && ch == target_chars[global_idx] {
+                        Span::styled(
+                            ch.to_string(),
+                            Style::default().fg(Color::Green),
+                        )
+                    } else if global_idx < target_chars.len() {
+                        Span::styled(
+                            ch.to_string(),
+                            Style::default()
+                                .fg(Color::Red)
+                                .add_modifier(Modifier::UNDERLINED),
+                        )
+                    } else {
+                        Span::styled(
+                            ch.to_string(),
+                            Style::default()
+                                .fg(Color::Red)
+                                .add_modifier(Modifier::UNDERLINED),
+                        )
+                    }
+                } else {
+                    Span::raw(" ")
+                }
+            })
+            .collect();
+        
+        let target_line = Line::from(target_spans);
+        lines.push(target_line);
+        lines.push(Line::from(vec![Span::raw("")]));
+        
+        let input_line = Line::from(input_spans);
+        lines.push(input_line);
+        lines.push(Line::from(vec![Span::raw("")]));
+        lines.push(Line::from(vec![Span::raw("")]));
+
+        let text_width = line_length.min(available_width);
+        let centered_area = if text_width < text_area.width as usize {
+            let offset = (text_area.width as usize - text_width) / 2;
+            Rect {
+                x: text_area.x + offset as u16,
+                y: text_area.y,
+                width: text_width as u16,
+                height: text_area.height,
+            }
+        } else {
+            text_area
+        };
+        
         let paragraph = Paragraph::new(lines)
             .alignment(Alignment::Left)
             .wrap(Wrap { trim: true });
         
-        let text_width = max_len.min(horizontal[1].width as usize);
-        let text_area = if text_width < horizontal[1].width as usize {
-            let offset = (horizontal[1].width as usize - text_width) / 2;
-            Rect {
-                x: horizontal[1].x + offset as u16,
-                y: horizontal[1].y,
-                width: text_width as u16,
-                height: horizontal[1].height,
-            }
-        } else {
-            horizontal[1]
-        };
-        
-        paragraph.render(text_area, buf);
+        paragraph.render(centered_area, buf);
     }
 }
 
