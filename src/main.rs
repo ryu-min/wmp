@@ -1,5 +1,4 @@
 mod typing_widget;
-mod stats_widget;
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{DefaultTerminal, Frame};
