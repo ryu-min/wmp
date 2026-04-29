@@ -1,14 +1,17 @@
 use ratatui::{
-    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    layout::{Alignment, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Paragraph, Widget, Wrap},
+    widgets::{Paragraph, Widget},
 };
 
 #[derive(Debug)]
 pub struct TypingWidget {
     target_text: String,
     input_text: String,
+    start_time: Option<std::time::Instant>,
+    pub wpm: f64,
+    pub elapsed: f64,
 }
 
 impl TypingWidget {
@@ -16,6 +19,9 @@ impl TypingWidget {
         Self {
             target_text,
             input_text: String::new(),
+            start_time: None,
+            wpm: 0.0,
+            elapsed: 0.0,
         }
     }
 
@@ -31,6 +37,7 @@ impl TypingWidget {
     }
 
     pub fn add_char(&mut self, ch: char) {
+        self.start_timer_if_needed();
         self.input_text.push(ch);
     }
 
@@ -40,6 +47,46 @@ impl TypingWidget {
 
     pub fn reset(&mut self) {
         self.input_text.clear();
+        self.start_time = None;
+        self.wpm = 0.0;
+        self.elapsed = 0.0;
+    }
+
+    pub fn update_stats(&mut self) {
+        self.elapsed = self.get_elapsed_time();
+        self.wpm = self.get_wpm();
+    }
+
+    pub fn get_wpm(&self) -> f64 {
+        let elapsed = match self.start_time {
+            Some(time) => time.elapsed().as_secs_f64(),
+            None => return 0.0,
+        };
+        if elapsed == 0.0 {
+            return 0.0;
+        }
+        let correct = self.input_text.chars()
+            .zip(self.target_text.chars())
+            .filter(|(a, b)| a == b)
+            .count() as f64;
+        if correct == 0.0 {
+            return 0.0;
+        }
+        let words = correct / 5.0;
+        (words / elapsed) * 60.0
+    }
+
+    pub fn get_elapsed_time(&self) -> f64 {
+        match self.start_time {
+            Some(time) => time.elapsed().as_secs_f64(),
+            None => 0.0,
+        }
+    }
+
+    fn start_timer_if_needed(&mut self) {
+        if self.start_time.is_none() && !self.input_text.is_empty() {
+            self.start_time = Some(std::time::Instant::now());
+        }
     }
 
     pub fn get_input(&self) -> &str {
@@ -113,30 +160,7 @@ impl TypingWidget {
 
 impl Widget for &TypingWidget {
     fn render(self, area: Rect, buf: &mut ratatui::prelude::Buffer) {
-        let block = Block::bordered().title("Typing Test");
-        let inner_area = block.inner(area);
-        block.render(area, buf);
-
-        let vertical = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Percentage(5),
-                Constraint::Percentage(90),
-                Constraint::Percentage(5),
-            ])
-            .split(inner_area);
-
-        let horizontal = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([
-                Constraint::Percentage(3),
-                Constraint::Percentage(94),
-                Constraint::Percentage(3),
-            ])
-            .split(vertical[1]);
-
-        let text_area = horizontal[1];
-        let available_width = text_area.width.saturating_sub(2) as usize;
+        let available_width = area.width.saturating_sub(2) as usize;
         
         if available_width == 0 {
             return;
@@ -158,16 +182,6 @@ impl Widget for &TypingWidget {
         let line_start = current_line_range.0;
         let line_end = current_line_range.1;
         let line_length = line_end - line_start;
-        
-        let input_in_line = if input_len > line_start {
-            input_len.min(line_end) - line_start
-        } else {
-            0
-        };
-        
-        let mut lines = Vec::new();
-        lines.push(Line::from(vec![Span::raw("")]));
-        lines.push(Line::from(vec![Span::raw("")]));
         
         let target_spans: Vec<Span> = (0..line_length)
             .map(|i| {
@@ -208,64 +222,45 @@ impl Widget for &TypingWidget {
             })
             .collect();
         
-        let input_spans: Vec<Span> = (0..line_length)
-            .map(|i| {
-                let global_idx = line_start + i;
-                if i < input_in_line && global_idx < input_chars.len() {
-                    let ch = input_chars[global_idx];
-                    if global_idx < target_chars.len() && ch == target_chars[global_idx] {
-                        Span::styled(
-                            ch.to_string(),
-                            Style::default().fg(Color::Green),
-                        )
-                    } else if global_idx < target_chars.len() {
-                        Span::styled(
-                            ch.to_string(),
-                            Style::default()
-                                .fg(Color::Red)
-                                .add_modifier(Modifier::UNDERLINED),
-                        )
-                    } else {
-                        Span::styled(
-                            ch.to_string(),
-                            Style::default()
-                                .fg(Color::Red)
-                                .add_modifier(Modifier::UNDERLINED),
-                        )
-                    }
-                } else {
-                    Span::raw(" ")
-                }
-            })
-            .collect();
+        let wpm_str = format!("{} wpm", self.wpm as u32);
+        let time_str = format!("{:.1}s", self.elapsed);
         
+        let wpm_line = Line::from(wpm_str).style(Style::default().fg(Color::Cyan));
+        let time_line = Line::from(time_str).style(Style::default().fg(Color::Yellow));
         let target_line = Line::from(target_spans);
-        lines.push(target_line);
-        lines.push(Line::from(vec![Span::raw("")]));
         
-        let input_line = Line::from(input_spans);
-        lines.push(input_line);
-        lines.push(Line::from(vec![Span::raw("")]));
-        lines.push(Line::from(vec![Span::raw("")]));
-
-        let text_width = line_length.min(available_width);
-        let centered_area = if text_width < text_area.width as usize {
-            let offset = (text_area.width as usize - text_width) / 2;
-            Rect {
-                x: text_area.x + offset as u16,
-                y: text_area.y,
-                width: text_width as u16,
-                height: text_area.height,
-            }
-        } else {
-            text_area
+        let wpm_area = Rect {
+            x: area.x,
+            y: area.y,
+            width: 10,
+            height: 1,
         };
         
-        let paragraph = Paragraph::new(lines)
-            .alignment(Alignment::Left)
-            .wrap(Wrap { trim: true });
+        let time_area = Rect {
+            x: area.x.saturating_add(area.width).saturating_sub(8),
+            y: area.y,
+            width: 8,
+            height: 1,
+        };
         
-        paragraph.render(centered_area, buf);
+        let target_area = Rect {
+            x: area.x + ((area.width as usize - line_length) / 2) as u16,
+            y: area.y.saturating_add(2),
+            width: line_length as u16,
+            height: 1,
+        };
+        
+        Paragraph::new(wpm_line)
+            .alignment(Alignment::Left)
+            .render(wpm_area, buf);
+        
+        Paragraph::new(time_line)
+            .alignment(Alignment::Right)
+            .render(time_area, buf);
+        
+        Paragraph::new(target_line)
+            .alignment(Alignment::Left)
+            .render(target_area, buf);
     }
 }
 

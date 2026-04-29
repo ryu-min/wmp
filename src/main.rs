@@ -1,4 +1,5 @@
 mod typing_widget;
+mod stats_widget;
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{DefaultTerminal, Frame};
@@ -12,7 +13,6 @@ fn main() -> color_eyre::Result<()> {
     result
 }
 
-/// The main application which holds the state and logic of the application.
 #[derive(Debug)]
 pub struct App {
     running: bool,
@@ -29,7 +29,6 @@ impl App {
         }
     }
 
-    /// Run the application's main loop.
     pub fn run(mut self, mut terminal: DefaultTerminal) -> color_eyre::Result<()> {
         self.running = true;
         while self.running {
@@ -40,16 +39,12 @@ impl App {
     }
 
     fn render(&mut self, frame: &mut Frame) {
+        self.typing_widget.update_stats();
         frame.render_widget(&self.typing_widget, frame.area());
     }
 
-    /// Reads the crossterm events and updates the state of [`App`].
-    ///
-    /// If your application needs to perform work in between handling events, you can use the
-    /// [`event::poll`] function to check if there are any events available with a timeout.
     fn handle_crossterm_events(&mut self) -> color_eyre::Result<()> {
         match event::read()? {
-            // it's important to check KeyEventKind::Press to avoid handling key release events
             Event::Key(key) if key.kind == KeyEventKind::Press => self.on_key_event(key),
             Event::Mouse(_) => {}
             Event::Resize(_, _) => {}
@@ -71,7 +66,6 @@ impl App {
         }
     }
 
-    /// Set running to false to quit the application.
     fn quit(&mut self) {
         self.running = false;
     }
