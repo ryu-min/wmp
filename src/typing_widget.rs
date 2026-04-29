@@ -245,7 +245,7 @@ impl Widget for &TypingWidget {
         
         let target_area = Rect {
             x: area.x + ((area.width as usize - line_length) / 2) as u16,
-            y: area.y.saturating_add(2),
+            y: area.y + area.height.saturating_sub(1) / 2,
             width: line_length as u16,
             height: 1,
         };
