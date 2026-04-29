@@ -2,6 +2,7 @@ mod typing_widget;
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{DefaultTerminal, Frame};
+use std::time::Duration;
 use typing_widget::TypingWidget;
 
 fn main() -> color_eyre::Result<()> {
@@ -31,25 +32,22 @@ impl App {
     pub fn run(mut self, mut terminal: DefaultTerminal) -> color_eyre::Result<()> {
         self.running = true;
         while self.running {
+            self.typing_widget.update_stats();
             terminal.draw(|frame| self.render(frame))?;
-            self.handle_crossterm_events()?;
+            
+            if event::poll(Duration::from_millis(50))? {
+                if let Event::Key(key) = event::read()? {
+                    if key.kind == KeyEventKind::Press {
+                        self.on_key_event(key);
+                    }
+                }
+            }
         }
         Ok(())
     }
 
     fn render(&mut self, frame: &mut Frame) {
-        self.typing_widget.update_stats();
         frame.render_widget(&self.typing_widget, frame.area());
-    }
-
-    fn handle_crossterm_events(&mut self) -> color_eyre::Result<()> {
-        match event::read()? {
-            Event::Key(key) if key.kind == KeyEventKind::Press => self.on_key_event(key),
-            Event::Mouse(_) => {}
-            Event::Resize(_, _) => {}
-            _ => {}
-        }
-        Ok(())
     }
 
     fn on_key_event(&mut self, key: KeyEvent) {
