@@ -94,7 +94,7 @@ impl TypingWidget {
     }
 
     pub fn is_complete(&self) -> bool {
-        self.input_text == self.target_text
+        self.input_text.len() >= self.target_text.len()
     }
 
     pub fn get_accuracy(&self) -> f64 {

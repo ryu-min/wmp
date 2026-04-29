@@ -1,9 +1,11 @@
 mod menu_widget;
+mod result_widget;
 mod typing_widget;
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use menu_widget::MenuWidget;
 use ratatui::{DefaultTerminal, Frame};
+use result_widget::ResultWidget;
 use std::time::Duration;
 use typing_widget::TypingWidget;
 
@@ -21,12 +23,14 @@ pub struct App {
     screen: Screen,
     menu_widget: MenuWidget,
     typing_widget: TypingWidget,
+    result_widget: ResultWidget,
 }
 
 #[derive(Debug, PartialEq)]
 enum Screen {
     Menu,
     Typing,
+    Result,
 }
 
 impl App {
@@ -36,8 +40,9 @@ impl App {
             screen: Screen::Menu,
             menu_widget: MenuWidget::new(),
             typing_widget: TypingWidget::new(
-                "The quick brown fox jumps over the lazy dog The quick brown fox jumps over the lazy dog The quick brown fox jumps over the lazy dog".to_string(),
+                "The quick brown fox jumps over the lazy dog".to_string(),
             ),
+            result_widget: ResultWidget::new(),
         }
     }
 
@@ -64,6 +69,7 @@ impl App {
         match self.screen {
             Screen::Menu => frame.render_widget(&self.menu_widget, frame.area()),
             Screen::Typing => frame.render_widget(&self.typing_widget, frame.area()),
+            Screen::Result => frame.render_widget(&self.result_widget, frame.area()),
         }
     }
 
@@ -80,6 +86,7 @@ impl App {
                         }
                     }
                     Screen::Typing => self.on_typing_key_event(key),
+                    Screen::Result => self.on_result_key_event(key),
                 }
             }
         }
@@ -107,6 +114,40 @@ impl App {
             }
             KeyCode::Backspace => {
                 self.typing_widget.remove_char();
+            }
+            KeyCode::Esc => {
+                self.screen = Screen::Menu;
+                self.typing_widget.reset();
+                self.menu_widget.reset();
+            }
+            _ => {}
+        }
+        
+        self.typing_widget.update_stats();
+        
+        if self.typing_widget.is_complete() {
+            self.result_widget.update(
+                self.typing_widget.get_wpm(),
+                self.typing_widget.get_accuracy(),
+                self.typing_widget.get_elapsed_time(),
+            );
+            self.screen = Screen::Result;
+        }
+    }
+
+    fn on_result_key_event(&mut self, key: KeyEvent) {
+        match key.code {
+            KeyCode::Up => self.result_widget.move_up(),
+            KeyCode::Down => self.result_widget.move_down(),
+            KeyCode::Enter => {
+                if self.result_widget.selected_index() == 0 {
+                    self.typing_widget.reset();
+                    self.screen = Screen::Typing;
+                } else {
+                    self.screen = Screen::Menu;
+                    self.typing_widget.reset();
+                    self.menu_widget.reset();
+                }
             }
             KeyCode::Esc => {
                 self.screen = Screen::Menu;
