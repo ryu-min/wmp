@@ -123,9 +123,25 @@ impl TypingWidget {
         let mut start = 0;
         
         while start < chars.len() {
-            let mut end = start + max_width.min(chars.len() - start);
+            if chars[start] == '\n' {
+                lines.push((start, start + 1));
+                start += 1;
+                continue;
+            }
             
-            if end < chars.len() {
+            let mut end = start + max_width.min(chars.len() - start);
+            let mut newline_pos = None;
+            
+            for i in start..end {
+                if chars[i] == '\n' {
+                    newline_pos = Some(i + 1);
+                    break;
+                }
+            }
+            
+            if let Some(nl) = newline_pos {
+                end = nl;
+            } else if end < chars.len() {
                 let mut last_space = end;
                 for i in (start..end).rev() {
                     if chars[i].is_whitespace() {
@@ -166,7 +182,8 @@ impl Widget for &TypingWidget {
             return;
         }
 
-        let line_ranges = self.split_text_into_lines(&self.target_text, available_width);
+        let line_width = (available_width as f64 * 0.7) as usize;
+        let line_ranges = self.split_text_into_lines(&self.target_text, line_width);
         
         if line_ranges.is_empty() {
             return;
@@ -174,60 +191,15 @@ impl Widget for &TypingWidget {
 
         let input_len = self.input_text.chars().count();
         let current_line_idx = self.get_current_line_index(&line_ranges, input_len);
-        let current_line_range = line_ranges[current_line_idx];
         
         let target_chars: Vec<char> = self.target_text.chars().collect();
         let input_chars: Vec<char> = self.input_text.chars().collect();
-        
-        let line_start = current_line_range.0;
-        let line_end = current_line_range.1;
-        let line_length = line_end - line_start;
-        
-        let target_spans: Vec<Span> = (0..line_length)
-            .map(|i| {
-                let global_idx = line_start + i;
-                if global_idx < target_chars.len() {
-                    let target_char = target_chars[global_idx];
-                    if global_idx < input_chars.len() {
-                        let input_char = input_chars[global_idx];
-                        if input_char == target_char {
-                            Span::styled(
-                                target_char.to_string(),
-                                Style::default().fg(Color::Green),
-                            )
-                        } else {
-                            Span::styled(
-                                target_char.to_string(),
-                                Style::default()
-                                    .fg(Color::Red)
-                                    .add_modifier(Modifier::CROSSED_OUT),
-                            )
-                        }
-                    } else if global_idx == input_chars.len() {
-                        Span::styled(
-                            target_char.to_string(),
-                            Style::default()
-                                .fg(Color::Yellow)
-                                .add_modifier(Modifier::UNDERLINED),
-                        )
-                    } else {
-                        Span::styled(
-                            target_char.to_string(),
-                            Style::default().fg(Color::White),
-                        )
-                    }
-                } else {
-                    Span::raw(" ")
-                }
-            })
-            .collect();
         
         let wpm_str = format!("{} wpm", self.wpm as u32);
         let time_str = format!("{:.1}s", self.elapsed);
         
         let wpm_line = Line::from(wpm_str).style(Style::default().fg(Color::Cyan));
         let time_line = Line::from(time_str).style(Style::default().fg(Color::Yellow));
-        let target_line = Line::from(target_spans);
         
         let wpm_area = Rect {
             x: area.x,
@@ -243,13 +215,6 @@ impl Widget for &TypingWidget {
             height: 1,
         };
         
-        let target_area = Rect {
-            x: area.x + ((area.width as usize - line_length) / 2) as u16,
-            y: area.y + area.height.saturating_sub(1) / 2,
-            width: line_length as u16,
-            height: 1,
-        };
-        
         Paragraph::new(wpm_line)
             .alignment(Alignment::Left)
             .render(wpm_area, buf);
@@ -257,10 +222,81 @@ impl Widget for &TypingWidget {
         Paragraph::new(time_line)
             .alignment(Alignment::Right)
             .render(time_area, buf);
+
+        let start_idx = if current_line_idx == 0 {
+            0
+        } else if current_line_idx >= line_ranges.len() - 1 {
+            line_ranges.len().saturating_sub(3)
+        } else {
+            current_line_idx.saturating_sub(1)
+        };
         
-        Paragraph::new(target_line)
-            .alignment(Alignment::Left)
-            .render(target_area, buf);
+        let num_lines = 3.min(line_ranges.len());
+        let text_area_y = area.y + area.height.saturating_sub(1) / 2 - num_lines as u16 / 2;
+        
+        for (idx, &(start, end)) in line_ranges.iter().enumerate().skip(start_idx).take(3) {
+            let line_length = end - start;
+            let y = text_area_y + idx.saturating_sub(start_idx) as u16;
+            
+            if y < area.y || y >= area.y + area.height {
+                continue;
+            }
+            
+            let is_current = idx == current_line_idx;
+            
+            let spans: Vec<Span> = (0..line_length)
+                .map(|i| {
+                    let global_idx = start + i;
+                    if global_idx < target_chars.len() {
+                        let target_char = target_chars[global_idx];
+                        if global_idx < input_chars.len() {
+                            let input_char = input_chars[global_idx];
+                            if input_char == target_char {
+                                Span::styled(
+                                    target_char.to_string(),
+                                    Style::default().fg(Color::Green),
+                                )
+                            } else {
+                                Span::styled(
+                                    target_char.to_string(),
+                                    Style::default()
+                                        .fg(Color::Red)
+                                        .add_modifier(Modifier::CROSSED_OUT),
+                                )
+                            }
+                        } else if global_idx == input_chars.len() && is_current {
+                            Span::styled(
+                                target_char.to_string(),
+                                Style::default()
+                                    .fg(Color::Yellow)
+                                    .add_modifier(Modifier::UNDERLINED),
+                            )
+                        } else {
+                            Span::styled(
+                                target_char.to_string(),
+                                Style::default().fg(Color::White),
+                            )
+                        }
+                    } else {
+                        Span::raw(" ")
+                    }
+                })
+                .collect();
+            
+            let line = Line::from(spans);
+            let line_x = area.x + ((area.width as usize - line_length) / 2) as u16;
+            
+            let line_area = Rect {
+                x: line_x,
+                y,
+                width: line_length as u16,
+                height: 1,
+            };
+            
+            Paragraph::new(line)
+                .alignment(Alignment::Left)
+                .render(line_area, buf);
+        }
     }
 }
 

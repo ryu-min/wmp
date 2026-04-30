@@ -27,8 +27,9 @@ impl App {
             running: true,
             screen: Screen::Menu,
             menu_widget: MenuWidget::new(),
-            typing_widget: TypingWidget::new(
-                "The quick brown fox jumps over the lazy dog".to_string(),
+typing_widget: TypingWidget::new(
+                "The quick brown fox jumps over the lazy dog How vexingly quick daft zebrics jump Sphinx of black quartz judge my vow 1234567890 How vexingly quick daft zebrics jump The quick brown fox jumps over the lazy dog Sphinx of black quartz 1234567890 abcdefghij Sphinx of black quartz judge my vow The quick brown fox jumps over the lazy dog How vexingly quick daft 1234567890 abcdefghijklmnop The quick brown fox jumps over the lazy dog How vexingly quick daft zebrics jump Sphinx of black quartz judge 1234567890 abcdefghijklmnopqr How vexingly quick daft zebrics jump The quick brown fox jumps over the lazy dog Sphinx of black quartz 1234567890 abcdefghijklmnopqrstu \
+                Sphinx of black quartz judge my vow The quick brown fox jumps over the lazy dog How vexingly quick daft zebrics jump".to_string(),
             ),
             result_widget: ResultWidget::new(),
         }
