@@ -15,7 +15,11 @@ impl MenuWidget {
     pub fn new() -> Self {
         Self {
             selected_index: 0,
-            options: vec!["Start Typing Test".to_string(), "Exit".to_string()],
+            options: vec![
+                "Quick Start".to_string(),
+                "Select Mode".to_string(),
+                "Exit".to_string(),
+            ],
         }
     }
 

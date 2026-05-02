@@ -1,7 +1,9 @@
 mod app;
 mod menu_widget;
+mod mode_select_widget;
 mod result_widget;
 mod typing_widget;
+mod wordset;
 
 fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;

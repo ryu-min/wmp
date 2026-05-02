@@ -12,6 +12,7 @@ pub struct TypingWidget {
     start_time: Option<std::time::Instant>,
     pub wpm: f64,
     pub elapsed: f64,
+    time_limit: Option<u64>,
 }
 
 impl TypingWidget {
@@ -22,7 +23,13 @@ impl TypingWidget {
             start_time: None,
             wpm: 0.0,
             elapsed: 0.0,
+            time_limit: None,
         }
+    }
+
+    pub fn with_time_limit(mut self, seconds: u64) -> Self {
+        self.time_limit = Some(seconds);
+        self
     }
 
     pub fn with_target_text(mut self, target_text: String) -> Self {
@@ -94,12 +101,19 @@ impl TypingWidget {
     }
 
     pub fn is_complete(&self) -> bool {
+        if let Some(limit) = self.time_limit {
+            if let Some(start) = self.start_time {
+                if start.elapsed().as_secs() >= limit {
+                    return true;
+                }
+            }
+        }
         self.input_text.len() >= self.target_text.len()
     }
 
     pub fn get_accuracy(&self) -> f64 {
-        if self.target_text.is_empty() {
-            return 1.0;
+        if self.input_text.is_empty() {
+            return 0.0;
         }
         let correct = self
             .input_text
@@ -107,12 +121,8 @@ impl TypingWidget {
             .zip(self.target_text.chars())
             .filter(|(a, b)| a == b)
             .count();
-        let total = self.input_text.len().max(self.target_text.len());
-        if total == 0 {
-            1.0
-        } else {
-            correct as f64 / total as f64
-        }
+        let total = self.input_text.len();
+        correct as f64 / total as f64
     }
 }
 
